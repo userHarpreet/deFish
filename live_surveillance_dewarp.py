@@ -257,65 +257,33 @@ def process_video(video_path, args, is_headless=False, default_mode=None):
 
     # Headless Batch Processing Mode
     if is_headless:
-        print(f"Batch processing {video_path} in '{mode}' mode using FFmpeg...")
-        
-        # Release resources initialized for OpenCV loop
-        cap.release()
-        if out_video is not None:
-            out_video.release()
-
-        # Map yaw from 0..360 to FFmpeg's [-180, 180] range
-        yaw_ff = yaw % 360.0
-        if yaw_ff > 180.0:
-            yaw_ff -= 360.0
-
-        # Construct FFmpeg filters
-        half_H = height_out // 2
-        half_W = width_out // 2
-
+        print(f"Batch processing {video_path} in '{mode}' mode...")
+        # Precompute maps
         if mode == 'panorama':
-            vf = f"v360=input=fisheye:output=equirect:ih_fov={fov_in}:iv_fov={fov_in}:pitch=-90:w={width_out}:h={height_out}"
+            map_x, map_y = make_panorama_map(W_in, H_in, width_out, height_out, Cx, Cy, R_max)
         elif mode == 'double_panorama':
-            # Stack front and back 180 panoramas
-            vf = (
-                f"[0:v]v360=input=fisheye:output=equirect:ih_fov={fov_in}:iv_fov={fov_in}:pitch=-90:yaw=0:h_fov=180:v_fov=90:w={width_out}:h={half_H}[top]; "
-                f"[0:v]v360=input=fisheye:output=equirect:ih_fov={fov_in}:iv_fov={fov_in}:pitch=-90:yaw=-180:h_fov=180:v_fov=90:w={width_out}:h={half_H}[bottom]; "
-                f"[top][bottom]vstack=inputs=2[out]"
-            )
+            map_x, map_y = make_double_panorama_map(W_in, H_in, width_out, height_out, Cx, Cy, R_max)
         elif mode == 'perspective':
-            vf = f"v360=input=fisheye:output=flat:ih_fov={fov_in}:iv_fov={fov_in}:pitch={pitch}:yaw={yaw_ff}:roll={roll}:h_fov={fov_out}:v_fov={fov_out*9/16}:w={width_out}:h={height_out}"
+            map_x, map_y = make_perspective_map(W_in, H_in, width_out, height_out, Cx, Cy, R_max, fov_in, yaw, pitch, roll, fov_out)
         elif mode == 'quad':
-            vf = (
-                f"[0:v]v360=input=fisheye:output=flat:ih_fov={fov_in}:iv_fov={fov_in}:pitch=55:yaw=0:h_fov=90:v_fov=90:w={half_W}:h={half_H}[n]; "
-                f"[0:v]v360=input=fisheye:output=flat:ih_fov={fov_in}:iv_fov={fov_in}:pitch=55:yaw=90:h_fov=90:v_fov=90:w={half_W}:h={half_H}[e]; "
-                f"[0:v]v360=input=fisheye:output=flat:ih_fov={fov_in}:iv_fov={fov_in}:pitch=55:yaw=180:h_fov=90:v_fov=90:w={half_W}:h={half_H}[s]; "
-                f"[0:v]v360=input=fisheye:output=flat:ih_fov={fov_in}:iv_fov={fov_in}:pitch=55:yaw=-90:h_fov=90:v_fov=90:w={half_W}:h={half_H}[w]; "
-                f"[n][e]hstack=inputs=2[top]; "
-                f"[s][w]hstack=inputs=2[bottom]; "
-                f"[top][bottom]vstack=inputs=2[out]"
-            )
+            map_x, map_y = make_quad_map(W_in, H_in, width_out, height_out, Cx, Cy, R_max, fov_in, fov_out)
 
-        cmd = ["ffmpeg", "-y", "-i", video_path]
-        if mode in ['double_panorama', 'quad']:
-            cmd.extend(["-filter_complex", vf, "-map", "[out]"])
-        else:
-            cmd.extend(["-vf", vf])
+        frame_count = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            dewarped = cv2.remap(frame, map_x, map_y, cv2.INTER_LINEAR)
+            if out_video:
+                out_video.write(dewarped)
+            frame_count += 1
+            if frame_count % 100 == 0:
+                print(f"Processed {frame_count} frames...")
 
-        cmd.extend([
-            "-c:v", "mpeg4",
-            "-qscale:v", "3",
-            "-pix_fmt", "yuv420p",
-            out_path
-        ])
-
-        print(f"Executing command: {' '.join(cmd)}")
-        
-        import subprocess
-        try:
-            subprocess.run(cmd, check=True)
-            print(f"Successfully processed {video_path} -> {out_path}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error: FFmpeg failed with exit code {e.returncode}")
+        cap.release()
+        if out_video:
+            out_video.release()
+        print(f"Finished processing {video_path}.")
         return
 
     # Interactive GUI mode
