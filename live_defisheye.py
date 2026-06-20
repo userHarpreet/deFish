@@ -1,3 +1,5 @@
+import os
+import sys
 import cv2
 import numpy as np
 from defisheye import Defisheye
@@ -92,12 +94,29 @@ def main():
     pfov = 140  # Matching pfov to fov ensures 100% of the horizontal edge pixels are captured
     pad = 0    # Padding allows capturing pixels outside the standard radius
 
+    # Determine input source
+    video_source = None
+    if len(sys.argv) > 1:
+        source_arg = sys.argv[1]
+        if source_arg.isdigit():
+            video_source = int(source_arg)
+        else:
+            video_source = source_arg
+    else:
+        # Check if default fisheye_video.mp4 exists in current directory
+        default_video = "fisheye_video.mp4"
+        if os.path.exists(default_video):
+            video_source = default_video
+            print(f"Using default video file: {default_video}")
+        else:
+            video_source = 0
+            print("No input video file specified and 'fisheye_video.mp4' not found. Falling back to webcam (0).")
+
     # Initialize video capture
-    #cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture(r"D:\RSSB\DCC\fisheye\fisheye_video.mp4")
+    cap = cv2.VideoCapture(video_source)
 
     if not cap.isOpened():
-        print("Error: Could not open camera or video file.")
+        print(f"Error: Could not open camera or video file (source: {video_source}).")
         return
 
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -131,7 +150,14 @@ def main():
             if out_video is None:
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 height, width = out_frame.shape[:2]
-                out_path = r"D:\RSSB\DCC\fisheye\output_defisheye.mp4"
+                
+                # Determine output path relative to input or run directory
+                if isinstance(video_source, str):
+                    base, ext = os.path.splitext(video_source)
+                    out_path = f"{base}_defisheye.mp4"
+                else:
+                    out_path = "output_defisheye.mp4"
+                    
                 print(f"Saving output video to: {out_path} with size {(width, height)}")
                 out_video = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
                 

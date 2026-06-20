@@ -1,58 +1,83 @@
 # deFish
 
-deFish is a Python tool that performs fast, real-time defisheye conversion on video feeds or files. It uses the `defisheye` library under the hood but wraps it with a caching mechanism to pre-calculate mapping coordinates. This ensures that processing subsequent frames is extremely fast, enabling real-time video correction without cropping or data loss.
+deFish is a collection of high-performance Python tools for real-time defisheye and dewarping conversion on video feeds, folders of videos, or webcam streams. It features two primary tools:
+
+1. **Standard Defisheye (`live_defisheye.py`)**: For standard action cameras (like GoPros) and horizontal perspective correction.
+2. **Ceiling-Mounted Surveillance Dewarp (`live_surveillance_dewarp.py`)**: For full-frame circular fisheye surveillance cameras (180°–220° FOV) with interactive virtual PTZ, panorama, double panorama, and quad-view projections.
+
+---
 
 ## Features
 
-- **Blazing Fast Conversion**: Caches mapping coordinates (xs, ys) on the first frame to ensure subsequent frames are processed in real-time.
-- **Full Resolution Preservation**: Bypasses default cropping behaviors to map across the whole frame width and height, preserving the original aspect and data.
-- **Flexible Input**: Can process both live webcam feeds and pre-recorded video files.
-- **Customizable Parameters**: Easy adjustment of field of view (FOV), projection format (`linear`, `equalarea`, `orthographic`, `stereographic`), and padding to achieve the exact desired visual output.
+- **Blazing Fast Conversion**: Coordinates are cached on initialization or parameters change, allowing frames to be processed in real-time (>60 FPS on CPU) using `cv2.remap`.
+- **Ceiling Surveillance Dewarping**: Specially designed geometry transformations for 360-degree ceiling cameras.
+- **Multiple Projection Modes**:
+  - **360° Panorama**: Converts the circular view into a single wide cylindrical strip.
+  - **Double Panorama**: Splits the room into stacked Front and Back 180° views.
+  - **Perspective (Virtual PTZ)**: Select and interactively rotate/zoom a perspective camera frame within the sphere.
+  - **Quad View**: Renders 4 virtual security cameras in a 2x2 grid looking in 4 compass directions.
+- **Interactive Calibration & PTZ**: Pan/tilt with mouse drag, zoom with key controls, and align the circular lens center and radius in real-time.
 
-## Prerequisites
-
-Ensure you have Python 3.x installed. You will need the following Python libraries:
-- `opencv-python`
-- `numpy`
-- `defisheye`
+---
 
 ## Installation
 
-1. Clone or download this repository.
-2. Install the required dependencies:
-
+Install dependencies:
 ```bash
 pip install opencv-python numpy defisheye
 ```
 
+---
+
 ## Usage
 
-1. Open `live_defisheye.py` in your preferred text editor.
-2. Update the input video path or set it to use your webcam.
-   - For webcam: Uncomment `cap = cv2.VideoCapture(0)` and comment out the video file path.
-   - For video file: Update the path in `cap = cv2.VideoCapture("path/to/your/input.mp4")`.
-3. (Optional) Update the output video path in the `main()` function:
-   ```python
-   out_path = r"path/to/save/output_defisheye.mp4"
-   ```
-4. Run the script:
+### 1. Interactive Surveillance Dewarping
+Run on a single file, a directory of files, or a camera index.
 
+**Run on a specific video file:**
 ```bash
-python live_defisheye.py
+python live_surveillance_dewarp.py path/to/video.mkv
 ```
 
-Press **`q`** while the video windows are focused to stop processing and save the output.
+**Run on all video files in the current folder:**
+```bash
+python live_surveillance_dewarp.py .
+```
 
-## Configuration
+**Run on live webcam index 0:**
+```bash
+python live_surveillance_dewarp.py 0
+```
 
-You can tweak the defisheye mapping in the `main()` function of `live_defisheye.py`:
+#### Interactive Hotkeys
+With the display window focused:
+- **`1`**: Switch to **Panorama** mode
+- **`2`**: Switch to **Double Panorama** mode
+- **`3`**: Switch to **Perspective** (Virtual PTZ) mode
+- **`4`**: Switch to **Quad View** mode
+- **Mouse Left Click & Drag**: Pan (Yaw) and Tilt (Pitch) in Perspective mode
+- **Arrow Keys**: Pan / Tilt
+- **`+` / `-`**: Zoom In / Zoom Out
+- **`w` / `s`**: Adjust center vertical offset ($C_y$)
+- **`a` / `d`**: Adjust center horizontal offset ($C_x$)
+- **`r` / `f`**: Adjust circular lens radius size ($R_{max}$)
+- **`[` / `]`**: Adjust lens input field of view (FOV)
+- **`SPACE`**: Play / Pause video
+- **`n`**: Skip to the next video file in the folder
+- **`q` or `ESC`**: Save output video and quit
 
-- `dtype`: Projection type (`linear`, `equalarea`, `orthographic`, `stereographic`).
-- `format`: Output format, e.g., `fullframe` or `circular`.
-- `fov`: Field of view of the camera (e.g., 140 for many action cameras).
-- `pfov`: The target field of view for the perspective projection.
-- `pad`: Padding to allow capturing pixels outside standard radiuses.
+---
 
-## Troubleshooting
-- If the video doesn't open, double-check your file paths within `live_defisheye.py`.
-- For performance issues, ensure you are not running other resource-heavy applications, though the cached coordinate mapping is designed precisely to mitigate processing overhead.
+### 2. Headless Batch Processing
+You can process all videos in a folder headlessly and export the results to an output folder.
+
+```bash
+python live_surveillance_dewarp.py ./input_folder --batch -o ./output_folder --mode double_panorama
+```
+
+Options:
+- `-o`, `--output`: Target path or output directory to save MP4 files.
+- `-m`, `--mode`: Default mode (`panorama`, `double_panorama`, `perspective`, `quad`).
+- `--fov-in`: Input lens FOV in degrees (default: `180.0`).
+- `--width` / `--height`: Output video resolution (default: `1280` x `720`).
+- `--cx` / `--cy` / `--radius`: Manual calibration overrides for the fisheye center and radius.
